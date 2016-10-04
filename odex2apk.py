@@ -5,7 +5,7 @@ name, it will look for files
 
     framework/arm/boot.oat
     priv-app/GoogleServicesFramework/GoogleServicesFramework.apk
-    priv-app/GoogleServicesFramework/arm/GoogleServicesFramework.odex
+    priv-app/GoogleServicesFramework/[oat]/arm/GoogleServicesFramework.odex
 
 and then this program will:
 
@@ -17,7 +17,7 @@ Given a framework name (such as com.google.android.maps), the files
 
     framework/arm/boot.oat
     framework/com.google.android.maps.jar
-    framework/arm/com.google.android.maps.odex
+    framework/[oat]/arm/com.google.android.maps.odex
     etc/permissions/com.google.android.maps.xml
 
 will be looked up and this program will additionally install the XML file.
@@ -66,7 +66,7 @@ def find_odex_for_apk(apk_path, arch):
 
     raise RuntimeError("No .odex file found for %s!" % apk_path)
 
-def odex_to_dex(odex_path, boot_odex_path):
+def odex_to_dex(odex_path, boot_path):
     """
     Converts an .odex file to a .dex file, returning its path on success.
     """
@@ -81,7 +81,7 @@ def odex_to_dex(odex_path, boot_odex_path):
     # Try to create a file. Check for the file existence as the exit code is
     # still 0 even for errors...
     cmd = ["java", "-jar", os.path.abspath(OAT2DEX),
-           os.path.abspath(odex_path), os.path.abspath(boot_odex_path)]
+           os.path.abspath(odex_path), os.path.abspath(boot_path)]
     _logger.debug("Executing: %s", cmd)
     output = subprocess.check_output(cmd, cwd=cwd, stderr=subprocess.STDOUT)
     if not os.path.exists(dex_path):
@@ -119,7 +119,7 @@ def add_classes_dex(apk_path, dex_path):
     with zipfile.ZipFile(apk_path, "a") as z:
         z.writestr(zinfo, data)
 
-def process_apk(apk_path, arch, boot_odex_path):
+def process_apk(apk_path, arch, boot_path):
     # Sanity check...
     ext = os.path.splitext(apk_path)[1][1:]
     if ext not in ("apk", "jar"):
@@ -132,7 +132,7 @@ def process_apk(apk_path, arch, boot_odex_path):
         odex_path = find_odex_for_apk(apk_path, arch)
 
         # convert it to a dex file...
-        dex_path = odex_to_dex(odex_path, boot_odex_path)
+        dex_path = odex_to_dex(odex_path, boot_path)
 
         # and add it as a classes.dex file
         add_classes_dex(apk_path, dex_path)
@@ -204,24 +204,24 @@ def detect_paths(apk_file, arch=None, framework_path=None):
             sys.exit(1)
 
     # Assumed boot path, could be non-existing and be created later.
-    boot_odex_path = os.path.join(framework_path, arch, "odex")
+    boot_path = os.path.join(framework_path, arch)
 
-    return arch, boot_odex_path
+    return arch, boot_path
 
 def main():
     args = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO,
             format="%(name)s: %(message)s")
 
-    arch, boot_odex_path = detect_paths(args.apk_files[0],
+    arch, boot_path = detect_paths(args.apk_files[0],
             args.arch, args.framework_path)
 
     # Validate boot path and try to optimize these files (needed for APK steps).
-    process_boot(boot_odex_path)
+    process_boot(os.path.join(boot_path, "odex"))
 
     for file_path in args.apk_files:
         try:
-            process_apk(file_path, arch, boot_odex_path)
+            process_apk(file_path, arch, boot_path)
         except:
             _logger.exception("Failed to process %s", file_path)
             sys.exit(1)
